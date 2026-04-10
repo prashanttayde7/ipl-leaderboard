@@ -86,7 +86,7 @@ body::before{content:'';position:fixed;top:-200px;left:50%;transform:translateX(
 .squad-header-pts{font-family:'DM Mono',monospace;font-size:13px;color:var(--accent)}
 .squad-chevron{font-size:12px;color:var(--muted);transition:transform 0.2s;flex-shrink:0}
 .squad-card.open .squad-chevron{transform:rotate(180deg)}
-.squad-body{display:none}.squad-card.open .squad-body{display:block}
+.squad-body{display:none;overflow-x:auto;-webkit-overflow-scrolling:touch}.squad-card.open .squad-body{display:block}
 .squad-table{width:100%;border-collapse:collapse;font-size:12px}
 .squad-table th{padding:8px 14px;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);font-weight:600;border-bottom:1px solid var(--border);text-align:left;background:var(--surface2)}
 .squad-table td{padding:9px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
@@ -161,8 +161,8 @@ select option{background:#181c24}
 .plb-search{flex:1;min-width:160px;padding:8px 12px;border-radius:8px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px}
 .plb-search:focus{outline:none;border-color:var(--accent)}
 .plb-filter{padding:8px 10px;border-radius:8px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-family:'DM Sans',sans-serif;font-size:12px}
-.plb-table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
-.plb-table{width:100%;border-collapse:collapse}
+.plb-table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.plb-table{width:100%;min-width:560px;border-collapse:collapse}
 .plb-table thead tr{background:var(--surface2);border-bottom:1px solid var(--border2)}
 .plb-table th{padding:10px 14px;font-size:10px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);text-align:left;cursor:pointer;user-select:none;white-space:nowrap}
 .plb-table th:hover{color:var(--text)}
@@ -196,6 +196,7 @@ select option{background:#181c24}
   .lb-table td:nth-child(4),.lb-table th:nth-child(4){display:none}
 }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>
 <body>
 
@@ -279,6 +280,9 @@ select option{background:#181c24}
           <button class="btn" onclick="clearMatchPoints()">Clear selected match</button>
           <button class="btn" onclick="clearAllPoints()" style="color:var(--red)">Clear all matches</button>
         </div>
+        <div class="btn-row" style="margin-top:6px">
+          <button class="btn" onclick="manualSendUpdates()" style="border-color:rgba(37,211,102,0.4);color:#25D366">📧 Resend emails + WhatsApp</button>
+        </div>
         <div class="smsg" id="import-status"></div>
       </div>
 
@@ -323,8 +327,11 @@ select option{background:#181c24}
 // CONFIG — only edit these two lines
 // ═══════════════════════════════════════════
 const ADMIN_PASSWORD = 'ipl2026admin';
+const JSONBIN_BIN_ID = '69ca2e34aaba882197a7e3d8';
+const JSONBIN_API_KEY = '$2a$10$/TElTU7v0C3tQrx1gWaRiOTs1BcKPG34LASHN0FncwsNR287jw3X.';
 // ═══════════════════════════════════════════
 
+const JSONBIN_URL = `https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`;
 
 const TEAMS = [
   {id:'RF',   name:'Royal Falcons'},
@@ -448,19 +455,9 @@ let adminUnlocked = false;
 
 // ── API ───────────────────────────────────────────────────
 async function fetchState() {
-  try {
-    const res = await fetch("./data.json");
-    if (!res.ok) throw new Error("Failed to load data.json");
-    return await res.json();
-  } catch (err) {
-    console.error("Error loading local data:", err);
-    return {
-      playerPoints: {},
-      jokers: {},
-      ics: {},
-      lastUpdated: null
-    };
-  }
+  const res = await fetch(JSONBIN_URL+'/latest',{headers:{'X-Master-Key':JSONBIN_API_KEY}});
+  if(!res.ok) throw new Error('fetch failed');
+  return (await res.json()).record;
 }
 async function pushState() {
   const res = await fetch(JSONBIN_URL,{
@@ -687,11 +684,12 @@ function renderPlayerLeaderboard(){
   let players=Object.values(playerMap);
 
   // Filters
-  if(plbPlayerFilter==='OWNED') players=players.filter(p=>p.isOwned);
+  if(plbPlayerFilter==='OWNED'&&plbTeamFilter==='ALL') players=players.filter(p=>p.isOwned);
+  else if(plbPlayerFilter==='OWNED'&&plbTeamFilter!=='ALL') players=players.filter(p=>p.isOwned&&p.owner===plbTeamFilter);
   else if(plbPlayerFilter==='UNOWNED') players=players.filter(p=>!p.isOwned);
   // plbPlayerFilter==='ALL' → show everyone
 
-  if(plbTeamFilter!=='ALL') players=players.filter(p=>p.owner===plbTeamFilter);
+  // team filter now handled inside plbPlayerFilter block above
 
   if(plbSearch.trim()){
     const q=plbSearch.toLowerCase();
@@ -760,6 +758,7 @@ function renderPlayerLeaderboard(){
       <input class="plb-search" type="text" placeholder="Search player, IPL team or fantasy team..." value="${plbSearch}" oninput="plbSearch=this.value;renderPlayerLeaderboard()">
       <select class="plb-filter" onchange="plbHandleFilter(this.value);renderPlayerLeaderboard()">
         <option value="ALL_ALL"${plbPlayerFilter==='ALL'&&plbTeamFilter==='ALL'?' selected':''}>All players (${totalAll})</option>
+        <option value="OWNED_ALL"${plbPlayerFilter==='OWNED'&&plbTeamFilter==='ALL'?' selected':''}>Owned players (${totalOwned})</option>
         <option value="UNOWNED_ALL"${plbPlayerFilter==='UNOWNED'?' selected':''}>Unowned players (${totalUnowned})</option>
         <option disabled>── By fantasy team ──</option>
         ${TEAMS.map(t=>`<option value="OWNED_${t.id}"${plbPlayerFilter==='OWNED'&&plbTeamFilter===t.id?' selected':''}>${t.name}</option>`).join('')}
@@ -783,6 +782,7 @@ function plbSort(col){
 function plbHandleFilter(val){
   if(val==='ALL_ALL'){ plbPlayerFilter='ALL'; plbTeamFilter='ALL'; }
   else if(val==='UNOWNED_ALL'){ plbPlayerFilter='UNOWNED'; plbTeamFilter='ALL'; }
+  else if(val==='OWNED_ALL'){ plbPlayerFilter='OWNED'; plbTeamFilter='ALL'; }
   else if(val.startsWith('OWNED_')){ plbPlayerFilter='OWNED'; plbTeamFilter=val.replace('OWNED_',''); }
 }
 
@@ -1103,6 +1103,8 @@ async function importPoints(){
     setSyncStatus('live','Updated '+state.lastUpdated);
     renderAll();
     document.getElementById('pts-paste').value='';
+    // Auto-trigger commentary + emails + WA
+    await sendMatchUpdates(matchName);
   }catch(e){
     status.className='smsg err';
     status.textContent='✗ Push failed. Check JSONBin credentials.';
@@ -1162,6 +1164,287 @@ async function saveICs(){
   }catch(e){st.className='smsg err';st.textContent='✗ Push failed.';}
 }
 
+
+// ═══════════════════════════════════════════════════════
+// COMMENTARY + EMAIL + WHATSAPP ENGINE
+// ═══════════════════════════════════════════════════════
+
+const EMAILJS_SERVICE  = 'service_sg36yti';
+const EMAILJS_TEMPLATE = 'template_lyyr11w';
+const EMAILJS_KEY      = 'pGolGtsvwJQG_kLpe';
+
+const OWNERS = [
+  {id:'RF',   name:'Nikhil',   team:'Royal Falcons',        email:'nikhilkhatu10@gmail.com',      wa:'+919619597576'},
+  {id:'BTDK', name:'Aditya',   team:'Balls To De Kock',     email:'aditrivedi96@gmail.com',       wa:'+919820477663'},
+  {id:'RTTO', name:'Neeraj',   team:'Rice To The Occasion', email:'neeraj.mhatre04@gmail.com',    wa:'+919004277836'},
+  {id:'SBCC', name:'Bhavik',   team:'Street Bluez CC',      email:'bhavikkachalia@gmail.com',     wa:'+919029703386'},
+  {id:'PP',   name:'Sushant',  team:'Powerplay Pandas',     email:'sushantk2510@gmail.com',       wa:'+919820097750'},
+  {id:'CD',   name:'Kevin',    team:'Cover Drivers',        email:'kevintalati@gmail.com',        wa:'+919757095258'},
+  {id:'SSK',  name:'Prashant', team:'Solo Super Kings',     email:'prashant.tayde.7@gmail.com',   wa:'+919049302500'},
+  {id:'MICG', name:'Sachin',   team:'MI Chya Gaavaat',      email:'sachinnayak16@gmail.com',      wa:'+919892355758'}
+];
+
+// Team nicknames for roast commentary
+const TEAM_NICK = {
+  RF:   ['the Falcons','Nikhil ke falcoons','the soaring birds','Falcon Force'],
+  BTDK: ['BTDK','Aditya ki de Kock army','the Kock blockers','Balls brigade'],
+  RTTO: ['Rice to the Occasion','Neeraj ke chaawal','the Rice kings','Basmati boys'],
+  SBCC: ['Street Bluez','Bhavik ke bluez','the street fighters','CC wale'],
+  PP:   ['Powerplay Pandas','Sushant ke pandas','the panda gang','PP boys'],
+  CD:   ['Cover Drivers','Kevin ke drivers','the cover merchants','CD camp'],
+  SSK:  ['Solo Super Kings','Prashant ke kings','the SSK royals','King camp'],
+  MICG: ['MI Chya Gaavaat','Sachin ke gaavaat','the gaavaat gang','Mumbai boys']
+};
+
+const RISE_LINES = [
+  'Ek dum solid! 🔥','Kya wapsi hai yaar! 💪','Seedha top pe nazar! 👀','Game on, baby! 🏏',
+  'Ab toh feel aa raha hai! 😤','Iss baar nahi chhodenge! 🦁','The comeback is REAL! 🚀'
+];
+const FALL_LINES = [
+  'Thoda struggle chal raha hai bhai 😅','Kuch toh karo yaar! 😬','Table ke neeche mat jaana! 😂',
+  'Ek match mein poori duniya palatne wali hai kya? 🤡','Ayyo... kya ho gaya? 😩',
+  'Haath dho lo kya points se? 😭','Seedha ground pe aa gaye 😤'
+];
+const SAME_LINES = [
+  'Rank same — but kitna aur chalega yeh? 🤔','Stuck in the middle like a bad umpiring decision 😏',
+  'Na upar na neeche — boring! 😴','Consistency is good — but is THIS the consistency you wanted? 😅'
+];
+
+function pickRandom(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+function nickOf(teamId){ return pickRandom(TEAM_NICK[teamId]||[teamId]); }
+
+// Find top scorer from a team in the last match
+function topScorerLastMatch(teamId, matchName){
+  const {playerRows} = getTeamStats(teamId);
+  let best=null, bestPts=-Infinity;
+  for(const p of playerRows){
+    const pts = ptsByMatch(p.name, matchName);
+    if(pts!==null && pts>bestPts){ bestPts=pts; best=p.name; }
+  }
+  return best ? {name:best, pts:bestPts} : null;
+}
+
+// Build leaderboard snapshot (same logic as renderLeaderboard)
+function buildRankedSnapshot(){
+  return TEAMS.map(t=>{
+    const s=getTeamStats(t.id);
+    const o=OWNERS.find(o=>o.id===t.id);
+    return {...t,...s,...o};
+  }).sort((a,b)=>b.total-a.total);
+}
+
+// Build previous snapshot (without last match)
+function buildPrevSnapshot(lastMatch){
+  const allImp=importedMatches();
+  const prevMatches=allImp.filter(m=>m!==lastMatch);
+  // temporarily compute each team's total without lastMatch
+  return TEAMS.map(t=>{
+    const lastPts=computeTeamPtsForMatch(t.id,lastMatch);
+    const s=getTeamStats(t.id);
+    return {id:t.id, total:s.total-lastPts};
+  }).sort((a,b)=>b.total-a.total).map((t,i)=>({...t,rank:i+1}));
+}
+
+// ── PERSONALISED MESSAGE PER OWNER ────────────────────────
+function buildPersonalMessage(owner, ranked, prevRankMap, lastMatch, matchName){
+  const myRank = ranked.findIndex(r=>r.id===owner.id)+1;
+  const myData = ranked.find(r=>r.id===owner.id);
+  const prevRank = prevRankMap[owner.id]||myRank;
+  const rankChange = prevRank - myRank; // positive = moved up
+  const leader = ranked[0];
+  const gap = leader.total - myData.total;
+  const above = myRank>1 ? ranked[myRank-2] : null; // team just above
+  const below = myRank<8 ? ranked[myRank] : null;   // team just below
+
+  const top = topScorerLastMatch(owner.id, lastMatch);
+  const leaderTop = topScorerLastMatch(leader.id, lastMatch);
+
+  let lines = [];
+
+  // Opening
+  lines.push(`🏏 IPL Fantasy 2026 — ${matchName} Update`);
+  lines.push(`━━━━━━━━━━━━━━━━━━━━━━━━`);
+  lines.push(`Aye ${owner.name} bhai! ${pickRandom(['Kya haal hai?','Kaisa chal raha hai?','Sab theek?'])}`);
+  lines.push('');
+
+  // Rank change
+  if(rankChange>0){
+    lines.push(`📈 Rank: #${prevRank} ➜ #${myRank} — ${pickRandom(RISE_LINES)}`);
+    lines.push(`${nickOf(owner.id)} ne ${rankChange} position upar maara! ${owner.name}, lagta hai teri team jagti hai! 🔥`);
+  } else if(rankChange<0){
+    lines.push(`📉 Rank: #${prevRank} ➜ #${myRank} — ${pickRandom(FALL_LINES)}`);
+    lines.push(`Ek match mein ${Math.abs(rankChange)} position girna... ${owner.name} bhai, yeh toh thoda painful hai na? 😬`);
+  } else {
+    lines.push(`📊 Rank: #${myRank} (no change) — ${pickRandom(SAME_LINES)}`);
+  }
+  lines.push('');
+
+  // Current standing
+  lines.push(`📊 Current: #${myRank} | ${myData.total} pts`);
+  if(myRank===1){
+    lines.push(`👑 TOP OF THE TABLE! ${owner.name} ke ${nickOf(owner.id)} ek dum top pe! Iss lead ko pakad ke rakhna!`);
+    if(below){
+      const belowOwner=OWNERS.find(o=>o.id===below.id);
+      lines.push(`⚠️ ${belowOwner?.name} ke ${nickOf(below.id)} sirf ${myData.total-below.total} pts peeche hain — nazar rakhna!`);
+    }
+  } else {
+    lines.push(`🎯 ${leader.name} ke ${nickOf(leader.id)} tujhse ${gap} pts aage hain.`);
+    if(gap<200) lines.push(`Itna gap toh ek achhe match mein cover ho sakta hai! Himmat mat haaro! 💪`);
+    else if(gap<500) lines.push(`Mushkil hai par impossible nahi — apne jokers wisely use karo! 🃏`);
+    else lines.push(`Seedha baat — abhi bahut kaam hai. Par IPL mein kuch bhi ho sakta hai! 🏏`);
+  }
+  lines.push('');
+
+  // Top scorer this match
+  if(top){
+    if(top.pts>80) lines.push(`🌟 STAR OF THE MATCH for ${owner.name}: ${top.name} ne ${top.pts} pts diye! Ekdum beast! 🔥🔥`);
+    else if(top.pts>40) lines.push(`⭐ Best performer: ${top.name} — ${top.pts} pts. Solid contribution! 👍`);
+    else lines.push(`😅 Top scorer this match: ${top.name} with just ${top.pts} pts. Yeh toh nahi chalega ${owner.name} bhai...`);
+  }
+
+  // Rivalry taunt
+  if(above){
+    const aboveOwner=OWNERS.find(o=>o.id===above.id);
+    const gapAbove=above.total-myData.total;
+    lines.push('');
+    lines.push(`🔥 RIVALRY ALERT: ${aboveOwner?.name} ke ${nickOf(above.id)} sirf ${gapAbove} pts aage! Agle match mein pakad le! 😤`);
+    const aboveTop=topScorerLastMatch(above.id,lastMatch);
+    if(aboveTop && aboveTop.pts>60) lines.push(`Unka ${aboveTop.name} khel raha tha ${aboveTop.pts} pts ke saath — thoda worry karo! 😅`);
+  }
+
+  // Group leaderboard snapshot
+  lines.push('');
+  lines.push(`📋 Full Standings after ${matchName}:`);
+  ranked.forEach((t,i)=>{
+    const marker = t.id===owner.id ? '👉 ' : '   ';
+    lines.push(`${marker}#${i+1} ${t.name} — ${t.total} pts`);
+  });
+
+  // Closing
+  lines.push('');
+  lines.push(`━━━━━━━━━━━━━━━━━━━━━━━━`);
+  lines.push(`🏆 Live leaderboard: https://ipl2026leaderboard.netlify.app`);
+  lines.push(`Bas ek hi cheez yaad rakhna — IPL mein koi bhi jeet sakta hai! Khelo full josh ke saath! 🏏🔥`);
+
+  return lines.join('\n');
+}
+
+// ── GROUP MESSAGE (same for everyone) ─────────────────────
+function buildGroupMessage(ranked, lastMatch, matchName){
+  const leader=ranked[0];
+  const leaderTop=topScorerLastMatch(leader.id,lastMatch);
+  let lines=[];
+  lines.push(`🏏✨ IPL Fantasy 2026 — ${matchName} RESULTS ✨🏏`);
+  lines.push(`━━━━━━━━━━━━━━━━━━━━━━━━`);
+  lines.push(`Bhai log, match ho gaya! Points update ho gaye! Dekho kaun hai top pe! 👀`);
+  lines.push('');
+  ranked.forEach((t,i)=>{
+    const medals=['🥇','🥈','🥉'];
+    const medal=medals[i]||(i<7?`#${i+1}`:`😢`);
+    const o=OWNERS.find(o=>o.id===t.id);
+    lines.push(`${medal} ${o?.name} (${t.name}) — ${t.total} pts`);
+  });
+  lines.push('');
+  if(leaderTop&&leaderTop.pts>60){
+    lines.push(`🌟 Star of the match: ${leaderTop.name} for ${leader.name} — ${leaderTop.pts} pts! Shabash! 🔥`);
+  }
+  const last=ranked[ranked.length-1];
+  const lastOwner=OWNERS.find(o=>o.id===last.id);
+  lines.push(`😂 Aur haan... ${lastOwner?.name} bhai, ${nickOf(last.id)} abhi bhi last pe hain — kuch toh karo! 🙏`);
+  lines.push('');
+  lines.push(`🏆 Full leaderboard: https://ipl2026leaderboard.netlify.app`);
+  lines.push(`━━━━━━━━━━━━━━━━━━━━━━━━`);
+  return lines.join('\n');
+}
+
+// ── SEND EMAILS ───────────────────────────────────────────
+async function sendAllEmails(ranked, prevRankMap, lastMatch, matchName){
+  emailjs.init(EMAILJS_KEY);
+  const results=[];
+  for(const owner of OWNERS){
+    const msg=buildPersonalMessage(owner,ranked,prevRankMap,lastMatch,matchName);
+    try{
+      await emailjs.send(EMAILJS_SERVICE,EMAILJS_TEMPLATE,{
+        to_email: owner.email,
+        subject: `🏏 IPL Fantasy ${matchName} Update — You're #${ranked.findIndex(r=>r.id===owner.id)+1}!`,
+        message: msg
+      });
+      results.push({name:owner.name,ok:true});
+    }catch(e){
+      results.push({name:owner.name,ok:false,err:e.text||e.message});
+    }
+  }
+  return results;
+}
+
+// ── SHOW WHATSAPP MODAL ───────────────────────────────────
+function showWhatsAppModal(ranked, prevRankMap, lastMatch, matchName){
+  const groupMsg=buildGroupMessage(ranked,lastMatch,matchName);
+  const cards=OWNERS.map(owner=>{
+    const msg=buildPersonalMessage(owner,ranked,prevRankMap,lastMatch,matchName);
+    const waNum=owner.wa.replace(/[^0-9]/g,'');
+    const waUrl=`https://wa.me/${waNum}?text=${encodeURIComponent(msg)}`;
+    const col=TEAM_COLOURS[owner.id]||'#888';
+    return`<div style="background:#111318;border:1px solid rgba(255,255,255,0.1);border-left:3px solid ${col};border-radius:10px;padding:14px 16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div>
+          <span style="font-weight:600;font-size:14px;color:#f0ece4">${owner.name}</span>
+          <span style="font-size:11px;color:#7a7d8a;margin-left:8px">${owner.team}</span>
+          <span style="font-size:12px;font-weight:600;color:${col};margin-left:8px">#${ranked.findIndex(r=>r.id===owner.id)+1}</span>
+        </div>
+        <a href="${waUrl}" target="_blank" style="background:#25D366;color:#000;padding:7px 14px;border-radius:8px;text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap">📱 Send on WhatsApp</a>
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:#7a7d8a;font-family:monospace;background:#0a0c10;padding:8px 10px;border-radius:6px;max-height:80px;overflow-y:auto;white-space:pre-wrap;line-height:1.5">${msg.substring(0,300)}...</div>
+    </div>`;
+  });
+
+  // Group message card
+  const groupWaUrl=`https://wa.me/?text=${encodeURIComponent(groupMsg)}`;
+  const groupCard=`<div style="background:#111318;border:2px solid #25D366;border-radius:10px;padding:14px 16px;margin-bottom:4px">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div style="font-weight:600;font-size:14px;color:#25D366">👥 Group Message (send to all)</div>
+      <a href="${groupWaUrl}" target="_blank" style="background:#25D366;color:#000;padding:7px 14px;border-radius:8px;text-decoration:none;font-size:12px;font-weight:600">📱 Open in WhatsApp</a>
+    </div>
+    <div style="margin-top:10px;font-size:11px;color:#7a7d8a;font-family:monospace;background:#0a0c10;padding:8px 10px;border-radius:6px;max-height:80px;overflow-y:auto;white-space:pre-wrap;line-height:1.5">${groupMsg.substring(0,300)}...</div>
+  </div>`;
+
+  document.getElementById('wa-cards').innerHTML=groupCard+cards.join('');
+  document.getElementById('wa-overlay').style.display='block';
+  document.getElementById('wa-overlay').scrollTop=0;
+}
+
+// ── MASTER SEND FUNCTION ──────────────────────────────────
+async function manualSendUpdates(){
+  const imp=importedMatches();
+  if(imp.length===0){
+    document.getElementById('import-status').className='smsg err';
+    document.getElementById('import-status').textContent='✗ No match data yet. Import a match first.';
+    return;
+  }
+  const lastMatch=imp[imp.length-1];
+  await sendMatchUpdates(lastMatch);
+}
+
+async function sendMatchUpdates(matchName){
+  const lastMatch=matchName;
+  const ranked=buildRankedSnapshot();
+  const prev=buildPrevSnapshot(lastMatch);
+  const prevRankMap=Object.fromEntries(prev.map(t=>[t.id,t.rank]));
+
+  const status=document.getElementById('import-status');
+  status.className='smsg loading';
+  status.textContent='📧 Sending emails to all 8 owners...';
+
+  const results=await sendAllEmails(ranked,prevRankMap,lastMatch,matchName);
+  const sent=results.filter(r=>r.ok).length;
+  const failed=results.filter(r=>!r.ok).length;
+
+  status.className='smsg ok';
+  status.textContent=`✓ Emails: ${sent}/8 sent${failed>0?' ('+failed+' failed)':''}. Opening WhatsApp panel...`;
+
+  setTimeout(()=>showWhatsAppModal(ranked,prevRankMap,lastMatch,matchName),600);
+}
+
 // ── AUTH ──────────────────────────────────────────────────
 let titleClicks=0;
 document.getElementById('main-title').addEventListener('click',()=>{
@@ -1203,6 +1486,17 @@ function switchTab(id,btn){
 // ── INIT ──────────────────────────────────────────────────
 fetchAndRender();
 setInterval(fetchAndRender,60000);
+
+<!-- WHATSAPP MODAL -->
+<div id="wa-overlay" style="display:none;position:fixed;inset:0;z-index:998;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);overflow-y:auto;padding:2rem 1rem">
+  <div style="max-width:680px;margin:0 auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.8rem;color:#25D366;letter-spacing:0.05em">📱 WhatsApp Updates</div>
+      <button onclick="document.getElementById('wa-overlay').style.display='none'" style="background:none;border:1px solid rgba(255,255,255,0.2);color:#f0ece4;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:13px">✕ Close</button>
+    </div>
+    <div id="wa-cards" style="display:flex;flex-direction:column;gap:12px"></div>
+  </div>
+</div>
 </script>
 </body>
 </html>
