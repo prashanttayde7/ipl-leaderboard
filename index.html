@@ -455,6 +455,15 @@ let adminUnlocked = false;
 
 // ── API ───────────────────────────────────────────────────
 async function fetchState() {
+  const res = await fetch("./data.json");
+
+  if (!res.ok) {
+    console.error("Fetch failed:", res.status);
+    throw new Error('fetch failed');
+  }
+
+  return await res.json();
+}
   const res = await fetch(JSONBIN_URL+'/latest',{headers:{'X-Master-Key':JSONBIN_API_KEY}});
   if(!res.ok) throw new Error('fetch failed');
   return (await res.json()).record;
