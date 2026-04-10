@@ -454,7 +454,7 @@ let state = {
 let adminUnlocked = false;
 
 // ── API ───────────────────────────────────────────────────
-async function fetchState() {
+async function fetchState() {   try {     const res = await fetch("./data.json");      if (!res.ok) {       throw new Error("Failed to load data.json");     }      return await res.json();   } catch (err) {     console.error("Error loading local data:", err);      // fallback empty state so UI loads     return {       playerPoints: {},       jokers: {},       ics: {},       lastUpdated: null     };   } } {
   const res = await fetch("./data.json");
 
   if (!res.ok) {
