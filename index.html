@@ -195,16 +195,7 @@ select option{background:#181c24}
   .team-id{display:none}
   .lb-table td:nth-child(4),.lb-table th:nth-child(4){display:none}
 }
-
-.leaderboard-container {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-.leaderboard-table {
-  min-width: 600px;
-}
 </style>
-
 </head>
 <body>
 
@@ -456,7 +447,6 @@ let state = {
 let adminUnlocked = false;
 
 // ── API ───────────────────────────────────────────────────
-
 async function fetchState() {
   try {
     const res = await fetch("./data.json");
@@ -464,7 +454,12 @@ async function fetchState() {
     return await res.json();
   } catch (err) {
     console.error("Error loading local data:", err);
-    return { playerPoints:{}, jokers:{}, ics:{}, lastUpdated:null };
+    return {
+      playerPoints: {},
+      jokers: {},
+      ics: {},
+      lastUpdated: null
+    };
   }
 }
 async function pushState() {
