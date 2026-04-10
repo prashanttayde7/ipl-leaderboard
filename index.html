@@ -465,38 +465,16 @@ async function pushState() {
 }
 async function fetchAndRender() {
   setSyncStatus('loading','Refreshing...');
-
   try {
     const r = await fetchState();
-
     state.playerPoints = r.playerPoints || {};
     state.jokers = r.jokers || Object.fromEntries(TEAMS.map(t=>[t.id,[]]));
     state.ics = r.ics || Object.fromEntries(TEAMS.map(t=>[t.id,[]]));
     state.lastUpdated = r.lastUpdated || null;
-
     for(const t of TEAMS){
       if(!state.jokers[t.id]) state.jokers[t.id]=[];
       if(!state.ics[t.id]) state.ics[t.id]=[];
     }
-
-    setSyncStatus('live', state.lastUpdated ? 'Updated '+state.lastUpdated : 'Live');
-
-    renderAll();
-
-  } catch (e) {
-    console.error("API failed:", e);
-
-    state.playerPoints = {};
-    state.jokers = Object.fromEntries(TEAMS.map(t=>[t.id,[]]));
-    state.ics = Object.fromEntries(TEAMS.map(t=>[t.id,[]]));
-
-    renderAll();
-
-    setSyncStatus('error','Offline mode');
-  }
-
-  document.getElementById('loading-screen').style.display = 'none';
-}
     setSyncStatus('live', state.lastUpdated?'Updated '+state.lastUpdated:'Live');
     renderAll();
   } catch(e) {
